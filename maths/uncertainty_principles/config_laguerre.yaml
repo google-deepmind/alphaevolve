@@ -1,0 +1,132 @@
+name: "uncertainty_principle_laguerre"
+
+problem_spec:
+  program_path: "../maths/uncertainty_principles/initial_program_laguerre.py"
+  problem_description: |
+    You are a research mathematician and an expert software developer. Your task is to optimize
+    linear combinations of Laguerre polynomials with certain properties: for a given natural number
+    m, we consider the following construction. Let $g_k(x) = L_k^\alpha(x)$ where $L_k^\alpha(x)$
+    denotes the standard generalized Laguerre polynomial of degree k and order $\alpha = -1/2$.
+    First, select m positive numbers z_1, z_2, \dots, z_m.
+    Then let g(x) be a linear combination of even degree g_k's up to order $4m + 3$, i.e., a linear
+    sum of g_0, g_2, \dots, g_(4m + 2). The coefficients of this linear combination are chosen such
+    that z_1, \dots, z_m are double roots of g(x) and g(0) = 0 and g'(0) = 1 (Counting degrees of
+    freedom implies that there is a unique such linear combination g(x)). Finally, define r to be
+    the largest positive sign change point of g(x).
+
+    GOAL: Your optimization task is, for a given natural number m, to find a collection of m
+    positive real numbers z_1, z_2, \dots, z_m such that the polynomial g(x) has the smallest
+    possible value of r.
+
+    Specifically, you want to search for a list `roots` of floats that maximize the function
+    `get_score(roots)`, defined below. The functions below are already implemented and are available
+    to you.
+
+    def construct_laguerre_combination(double_root_points: list[float]) -> sympy.Expr:
+      m = len(double_root_points)
+      alpha = sympy.Rational(1, 2) - 1
+      x = sympy.symbols('x')
+      degrees = np.arange(0, 4 * m + 4, 2)
+      basis_polys = [
+          sympy.polys.orthopolys.laguerre_poly(
+              n=int(d), x=x, alpha=alpha, polys=False
+          )
+          for d in degrees
+      ]
+      num_basis = len(basis_polys)
+      num_constraints = 2 * m + 2
+      basis_derivs = [p.diff(x) for p in basis_polys]
+      matrix = sympy.Matrix.zeros(num_constraints, num_basis)
+      targets = sympy.Matrix.zeros(num_constraints, 1)
+      targets[1] = 1
+      for j in range(num_basis):
+        matrix[0, j] = basis_polys[j].subs(x, 0)
+        matrix[1, j] = basis_derivs[j].subs(x, 0)
+      for i, val in enumerate(double_root_points):
+        z_i = sympy.Rational(val)
+        row_val = 2 * i + 2
+        row_der = 2 * i + 3
+        for j in range(num_basis):
+          matrix[row_val, j] = basis_polys[j].subs(x, z_i)
+          matrix[row_der, j] = basis_derivs[j].subs(x, z_i)
+      coeffs = matrix.LUsolve(targets)
+      return sum(coeffs[j] * basis_polys[j] for j in range(num_basis))
+
+    def verify_laguerre_construction(
+        g_fn: sympy.Expr, expected_double_roots: list[float]
+    ) -> sympy.Expr | None:
+      x = sympy.symbols('x')
+      dg_fn = sympy.diff(g_fn, x)
+      if not g_fn.subs(x, 0).is_zero:
+        return None
+      if not (dg_fn.subs(x, 0) - 1).is_zero:
+        return None
+      for z in expected_double_roots:
+        z_rational = sympy.Rational(z)
+        if not g_fn.subs(x, z_rational).is_zero:
+          return None
+        if not dg_fn.subs(x, z_rational).is_zero:
+          return None
+      div = x * sympy.prod(
+          [(x - sympy.Rational(z)) ** 2 for z in expected_double_roots]
+      )
+      try:
+        gq_fn = sympy.exquo(g_fn, div)
+      except sympy.polys.polyerrors.BasePolynomialError:
+        return None
+      if not sympy.real_roots(gq_fn, x):
+        return None
+      return gq_fn
+
+    def compute_upper_bound(gq_fn: sympy.Expr) -> float:
+      x = sympy.symbols('x')
+      largest_sign_change = sympy.Integer(0)
+      epsilon = sympy.Rational(1, 10**198)
+      for root in sympy.real_roots(gq_fn, x):
+        approx_root = root.eval_rational(n=200)
+        val_p = gq_fn.subs(x, approx_root + epsilon)
+        val_m = gq_fn.subs(x, approx_root - epsilon)
+        if (val_p * val_m) < 0:
+          if approx_root > largest_sign_change:
+            largest_sign_change = approx_root
+      return float(largest_sign_change)
+
+    def get_score(roots: list[float]) -> float:
+      if not (
+          isinstance(roots, list)
+          and len(roots) == 12
+          and all(isinstance(x, (int, float)) for x in roots)
+          and np.max(np.abs(roots)) < 500
+          and np.min(roots) >= 0
+      ):
+        return -float('inf')
+
+      roots = sorted(roots)
+
+      g_fn = construct_laguerre_combination(roots)
+      if g_fn is None:
+        return -float('inf')
+      gq_fn = verify_laguerre_construction(g_fn, roots)
+      if gq_fn is None:
+        return -float('inf')
+      return -compute_upper_bound(gq_fn)
+
+
+    You have to implement the function `search_for_best_roots` which has an argument `initial_roots`
+    that is a list of positive numbers. You can start the search from this list. The size of this
+    list is m, and you want to return a list of the same size. Your search function has 1000 seconds
+    to run, and you can use the functions above to evaluate the quality of a candidate list of
+    roots.
+
+  main_metric_name: "score"
+
+budget:
+  num_llm_calls: 100
+  num_coroutines: 4
+
+modules:
+  database: GreedyAndIslandsDatabase
+  prompt_sampler: TemplatePromptSampler
+  llm: GenAILLMClient
+  evaluator: DockerEvaluator
+  logger: LocalLogger

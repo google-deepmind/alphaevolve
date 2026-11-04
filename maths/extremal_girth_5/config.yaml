@@ -1,0 +1,124 @@
+name: "extremal_girth_5"
+
+problem_spec:
+  program_path: "../maths/extremal_girth_5/initial_program.py"
+  problem_description: |
+    Act as an expert graph theorist and optimizer. Your task is to write a Python program that
+    generates a graph with a given number of nodes with as many edges as possible. However, the
+    graph must not have a 3-cycle or a 4-cycle. You can use the `networkx` package or any other
+    method to generate an extremal graph, such as using projective planes or other group-theoretic
+    ideas. Your program will be evaluated for various values of n between 53 and 203, and you
+    will be rewarded for generating graphs with many edges for these values of n. Here is the score
+    function to evaluate your program:
+
+    def calculate_graph_score(n: int, edges: list[tuple[int, int]]) -> int:
+      """Analyzes a graph for specific cycle constraints and returns a score.
+
+      The function filters the input edges for validity (no self-loops,
+      indices must be within [0, n-1], and must be integers). It then
+      checks if the graph contains any 3-cycles (triangles) or 4-cycles.
+
+      Args:
+        n: The number of nodes in the graph.
+        edges: A list of pairs of integers, representing edges.
+
+      Returns:
+        0 if a 3-cycle or 4-cycle is detected, and the total count of unique, valid edges
+        otherwise.
+      """
+      uint64 = numba.uint64
+      unique_edges = set()
+      for e in edges:
+        try:
+          u, v = int(e[0]), int(e[1])
+          if u == v or not (0 <= u < n and 0 <= v < n):
+            continue
+          if u < v:
+            unique_edges.add((u, v))
+          else:
+            unique_edges.add((v, u))
+        except (ValueError, TypeError, IndexError):
+          continue
+
+      if not unique_edges:
+        return 0
+
+      edge_array = np.array(list(unique_edges), dtype=np.int32)
+
+      num_words = (n + 63) // 64
+
+      if _has_cycles_bitpacked(n, edge_array, num_words):
+        return 0
+
+      return len(edge_array)
+
+    @njit(fastmath=True)
+    def _popcount(x):
+      """Returns the number of set bits (1s) in a 64-bit integer."""
+      c = uint64(0)
+      while x > 0:
+        x &= x - uint64(1)
+        c += uint64(1)
+      return c
+
+
+    @njit(fastmath=True)
+    def _has_cycles_bitpacked(n, edge_array, num_words) -> bool:
+      """Detects 3-cycles and 4-cycles using bitwise adjacency intersections.
+
+      This function leverages bit-parallelism to check 64 potential neighbors
+      simultaneously, reducing complexity from O(n^3) to O(n^3 / 64).
+
+      Returns True if a 3-cycle or 4-cycle is found, False otherwise.
+
+      Args:
+        n: The number of nodes in the graph.
+        edge_array: The edge array of the graph.
+        num_words: The number of words needed for bit-packing.
+
+      Returns:
+        True if a 3-cycle or 4-cycle is found, False otherwise.
+      """
+      bit_adj = np.zeros((n, num_words), dtype=uint64)
+      for i in range(len(edge_array)):
+        u, v = edge_array[i]
+        bit_adj[u, v >> 6] |= uint64(1) << uint64(v & 63)
+        bit_adj[v, u >> 6] |= uint64(1) << uint64(u & 63)
+      for u in range(n):
+        for v in range(u + 1, n):
+          common_count = 0
+          for k in range(num_words):
+            intersect = bit_adj[u, k] & bit_adj[v, k]
+            if intersect:
+              common_count += _popcount(intersect)
+          if common_count == 0:
+            continue
+          is_connected = (bit_adj[u, v >> 6] >> uint64(v & 63)) & uint64(1)
+          if is_connected or common_count >= 2:
+            return True
+      return False
+
+    You need not implement the `calculate_graph_score` function. You can access it directly. You
+    need to implement the function `search_for_best_graph` with the following signature:
+
+    def search_for_best_graph(
+        num_nodes: int, init_edges: list[tuple[int, int]]
+    ) -> list[tuple[int, int]]:
+
+    where init_edges is the best graph found so far for the given number of nodes, and you can use
+    it as a starting point for your search. Each graph is represented as a list of edges, where
+    each edge is a tuple of two integers representing the nodes (between 0 and num_nodes - 1)
+    connected by the edge. Your search function has 60 seconds to complete.
+
+  main_metric_name: "score"
+
+budget:
+  num_llm_calls: 100
+  num_coroutines: 4
+
+modules:
+  database: GreedyAndIslandsDatabase
+  prompt_sampler: TemplatePromptSampler
+  llm: GenAILLMClient
+  evaluator: DockerEvaluator
+  logger: LocalLogger

@@ -1,0 +1,125 @@
+name: "cap_sets"
+
+problem_spec:
+  program_path: "../maths/cap_sets/initial_program.py"
+  problem_description: |
+    Act as an expert in combinatorics and computer science. Your task is to find
+    large cap sets for a certain `dimension`, i.e., sets of vectors with elements in
+    `{{0, 1, 2}}` such that no three of them sum to the all-zero vector (mod 3).
+
+    You must write a function in Python, called `search_for_best_cap_set`, which
+    generates a cap set as large as possible.
+
+    Your construction will be evaluated by a function that checks the following:
+    1. **Formatting.** Each vector in the set must have length `dimension`, and each
+    of its elements must be in `{{0, 1, 2}}`.
+    2. **Validity.** All elements in the set must form a valid cap set.
+    The function will assign you a `score`, equal to the size of the cap set after
+    having removed badly formatted vectors and invalid nodes (see details below).
+    Thus, your ultimate goal is to improve the best-known constructions and find a
+    large `score`.
+
+    Here is the function that obtains the `score`:
+    ```python
+    def calculate_score_cap_set(
+        cap_set: set[tuple[int, ...]],
+        dimension: int,
+    ) -> tuple[float, set[tuple[int, ...]]]:
+      """Calculates the score of a candidate cap set.
+
+      Checking the cap set property naively takes O(num_elements^3 dimension) time,
+      where num_elements is the size of the given cap set. This function implements
+      a faster check that runs in O(num_elements^2 dimension).
+
+      Args:
+        cap_set: A set of vectors of length `dimension` with elements in {{0, 1, 2}}.
+        dimension: The dimension of the vectors in the cap set.
+
+      Returns:
+        A tuple of `(score, final_cap_set)`, where `score` is the score of the cap set
+        (i.e., its length after removing invalid elements), and `final_cap_set` is a
+        valid cap set obtained from `cap_set` after removing invalid elements.
+      """
+      # Remove invalid elements from `cap_set`.
+      cleared_cap_set = set()
+      for element in cap_set:
+        if (
+            not isinstance(element, tuple)  # Wrong type.
+            or len(element) != dimension  # Wrong length.
+            or not all(isinstance(x, int) for x in element)  # Wrong type.
+            or any(x < 0 or x >= 3 for x in element)  # Wrong values.
+        ):
+          continue
+        # Add valid elements to `cleared_cap_set`.
+        cleared_cap_set.add(element)
+
+      num_elements = len(cleared_cap_set)
+      if num_elements <= 1:
+        return float(num_elements), cleared_cap_set
+
+      # Convert the cap set to an array of integers.
+      cleared_cap_set = np.array(
+          list(cleared_cap_set), dtype=np.int32
+      )  # Shape (num_elements, dimension).
+      powers = 3 ** np.arange(dimension - 1, -1, -1)  # Shape (dimension,).
+      cleared_cap_set_as_int = np.einsum(
+          'np,p->n', cleared_cap_set, powers
+      )  # Shape (num_elements,).
+
+      # Starting from the empty set, we iterate through the vectors in
+      # `cleared_cap_set` one by one and check that the vector can be inserted into
+      # the set without violating the defining property of cap set. To make this
+      # check fast we maintain an array `invalid` indicating, for each element of
+      # Z_3^n, whether that element can be inserted into the growing set without
+      # violating the cap set property.
+      final_cap_set = set()
+      invalid = np.zeros(shape=(3 ** dimension,), dtype=np.bool_)
+      for idx_i, (new_vector, new_vector_as_int) in enumerate(
+          zip(cleared_cap_set, cleared_cap_set_as_int, strict=True)
+      ):
+        if invalid[new_vector_as_int]:
+          continue
+        if idx_i >= 1:
+          invalid_idx = np.einsum(
+              'np,p->n',
+              (
+                  - np.array(list(final_cap_set), dtype=np.int32)
+                  - new_vector[None]
+              ) % 3,
+              powers,
+          )
+          invalid[invalid_idx] = True
+        invalid[new_vector_as_int] = True
+        final_cap_set.add(tuple(map(int, new_vector)))
+
+      return float(len(final_cap_set)), final_cap_set
+    ```
+
+    Your task is thus to improve the function `search_for_best_cap_set`. You may
+    code up any search method you want, and you are allowed to call the
+    `calculate_score_cap_set` function as many times as you want. You have access to
+    it; you don't need to code up `calculate_score_cap_set`. You want the score it
+    gives you to be as high as possible. This corresponds to maximizing the size of
+    the cap set.
+
+    Your `search_for_best_cap_set` function will run under a time limit of 20
+    minutes, and it will be evaluated on a single given `dimension`. The search
+    function takes an argument `initial_solution`, which may be a good starting
+    point for the search. The output of the function should have the same format as
+    that input argument.
+
+    Good luck, you can find cap sets that are larger than the state of the art! I
+    believe in you!
+
+  main_metric_name: "score"
+
+budget:
+  num_llm_calls: 100
+  num_coroutines: 4
+
+modules:
+  database: GreedyAndIslandsDatabase
+  prompt_sampler: TemplatePromptSampler
+  llm: GenAILLMClient
+  evaluator: DockerEvaluator
+  logger: LocalLogger

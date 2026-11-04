@@ -1,0 +1,141 @@
+name: "shannon_cycle"
+
+problem_spec:
+  program_path: "../maths/shannon_cycle/initial_program.py"
+  problem_description: |
+    Act as an expert in combinatorics, computer science, and information theory.
+    Your task is to find large independent sets in powers of cycle graphs, with the
+    goal of improving the Shannon capacity of such graphs.
+
+    A cycle graph is described by a single integer indicating the number of nodes,
+    where two nodes are connected iff their difference is `+/-1` (modulo the number
+    of nodes). When we take the `power`-th power of the graph, each node can be
+    represented as a vector in `{{0, 1, ..., num_nodes - 1}} ^ power`, and two
+    distinct nodes are connected iff their difference is a vector whose elements are
+    all in `{{-1, 0, 1}}` (modulo `num_nodes`).
+
+    You must write a function in Python, called `search_for_best_independent_set`,
+    which generates an independent set as large as possible. (An independent set is a
+    set of nodes that are all disconnected from one another.)
+
+    Your construction will be evaluated by a function that checks the following:
+    1. **Formatting.** Each vector in the independent set must have length `power`,
+    and each of its elements must be in `{{0, 1, ..., num_nodes - 1}}`.
+    2. **Validity.** All nodes in the independent set must be disconnected from each
+    other in the power graph.
+
+    The function will assign you a `score`, equal to the **improvement** on the size
+    of the independent set after having removed badly formatted vectors and
+    dependent nodes. Here, the "improvement" is obtained over the best-known
+    construction for that `(num_nodes, power)` pair in the literature, e.g., the
+    best known solution for `(5, 2)` has size 5, so the `score` will be equal to the
+    size of the set from `search_for_best_independent_set` minus 5. Thus, your
+    ultimate goal is to improve the best-known constructions and find (strictly)
+    positive `score`, hence discovering novel lower bounds on the independence
+    number.
+
+    Here is the function that obtains the `score`:
+    ```python
+    def calculate_score_independent_set(
+        independent_set: set[tuple[int, ...]],
+        num_nodes: int,
+        power: int,
+    ) -> float:
+      """Calculates the score of an independent set."""
+      # Obtain the best-known size.
+      best_known_independent_set_size = ...  # (details omitted for brevity.)
+
+      # Remove invalid elements from `independent_set`.
+      cleared_independent_set = set()
+      for element in independent_set:
+        if (
+            not isinstance(element, tuple)  # Wrong type.
+            or len(element) != power  # Wrong length.
+            or not all(isinstance(x, int) for x in element)  # Wrong type.
+            or any(x < 0 or x >= num_nodes for x in element)  # Wrong values.
+        ):
+          continue
+        # Add valid elements to `cleared_independent_set`.
+        cleared_independent_set.add(element)
+
+      num_elements = len(cleared_independent_set)
+      if num_elements <= 1:
+        return float(num_elements - best_known_independent_set_size)
+
+      # Convert the independent set to an array of integers.
+      cleared_independent_set = np.array(
+          list(cleared_independent_set), dtype=np.int32
+      )  # Shape (num_elements, power).
+      powers = np.array(
+          [num_nodes ** i for i in range(power - 1, -1, -1)], dtype=np.int32
+      )  # Shape (power,).
+      cleared_independent_set_as_int = np.einsum(
+          'np,p->n', cleared_independent_set, powers
+      )  # Shape (num_elements,).
+
+      # Iteratively find which elements do not satisfy the independence condition,
+      # and mark them as "dependent".
+      forbidden_diffs = np.array(
+          list(itertools.product([-1, 0, 1], repeat=power)), dtype=np.int32
+      ) % num_nodes  # Shape (num_forbidden, power).
+      dependent = np.array(  # Initially assume no elements are dependent.
+          [False] * num_elements, dtype=np.bool_
+      )  # Shape (num_elements,).
+      for idx_i, element in enumerate(cleared_independent_set):
+        if dependent[idx_i]:
+          continue
+        # Find all "forbidden" elements, i.e., those that would create a dependent
+        # set if found in `cleared_independent_set[idx_i + 1 :]`.
+        all_forbidden_elements = np.expand_dims(
+            np.einsum(
+                'np,p->n', (forbidden_diffs + element[None]) % num_nodes, powers
+            ),  # Shape (num_forbidden,).
+            axis=-1,
+        )  # Shape (num_forbidden, 1).
+        # Find which elements in `cleared_independent_set[idx_i + 1 :]` are indeed
+        # forbidden.
+        other_elements = np.expand_dims(
+            cleared_independent_set_as_int[idx_i + 1 :],
+            axis=0,
+        )  # Shape (1, num_elements_other).
+        idx_blocking = np.any(
+            # Shape (num_forbidden, num_elements_other).
+            other_elements == all_forbidden_elements,
+            axis=0,
+        )  # Shape (num_elements_other,).
+        # Update `dependent` to reflect the newly found dependent elements.
+        idx_blocking = np.concatenate(
+            [np.array([False] * (idx_i + 1), dtype=np.bool_), idx_blocking]
+        )  # Shape (num_elements,).
+        dependent[idx_blocking] = True
+
+      num_dependent = sum(dependent)
+      return float(num_elements - num_dependent - best_known_independent_set_size)
+    ```
+
+    Your task is thus to improve the function `search_for_best_independent_set`. You
+    may code up any search method you want, and you are allowed to call the
+    `calculate_score_independent_set` function as many times as you want. You have
+    access to it; you don't need to code up `calculate_score_independent_set`. You
+    want the score it gives you to be as high as possible. This corresponds to maximizing
+    the size of the independent set.
+
+    Your `search_for_best_independent_set` function will run under a time limit of
+    20 minutes. The search function takes an argument `initial_solution`, which may
+    be a good starting point for the search. The output of the function should have
+    the same format as that input argument.
+
+    Good luck, you can break the state of the art. I believe in you!
+
+  main_metric_name: "score"
+
+budget:
+  num_llm_calls: 100
+  num_coroutines: 4
+
+modules:
+  database: GreedyAndIslandsDatabase
+  prompt_sampler: TemplatePromptSampler
+  llm: GenAILLMClient
+  evaluator: DockerEvaluator
+  logger: LocalLogger

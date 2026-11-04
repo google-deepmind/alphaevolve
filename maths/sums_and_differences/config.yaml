@@ -1,0 +1,74 @@
+
+name: "sums_and_differences"
+
+problem_spec:
+  program_path: "../maths/sums_and_differences/initial_program.py"
+  problem_description: |
+    Sums and differences problem
+
+    Act as an expert software developer and optimization specialist specializing in
+    finding sets of integers with certain properties. Your task is to find a set A consisting of
+    distinct positive integers with the property that the set A - A is as large as possible, and at
+    the same time the set A + A is as small as possible. The set A should contain 0 and should
+    satisfy the constraint size(A - A) <= 2 max (A) + 1.
+    Here A + A is the set of all possible sums of two elements of A, and A - A is the set of all
+    possible differences of two elements of A.
+
+    The objective function to be maximized is log(|A - A| / |A + A|) / log(2 * max(A) + 1) - 0.01 / |A|.
+    The exact score function your construction will be evaluated on is given below:
+
+    def compute_score(u: np.ndarray) -> float:
+      try:
+        u = np.asanyarray(u)
+        if u.ndim != 1 or not np.issubdtype(u.dtype, np.integer) or u.size < 2:
+          return 0
+        u = np.unique(np.abs(u.astype(np.int64)))
+        if u[0] != 0:
+          u = np.insert(u, 0, 0)
+      except (TypeError, ValueError):
+        return 0
+
+      max_u = u[-1]
+      u_minus_u = np.zeros(
+          2 * max_u + 1, dtype=bool
+      )  # Store the set u - u as an array of booleans.
+      u_plus_u = np.zeros(
+          2 * max_u + 1, dtype=bool
+      )  # Store the set u + u as an array of booleans.
+
+      for i in u:
+        u_minus_u[i - u + max_u] = True
+        u_plus_u[i + u] = True
+
+      u_minus_u_size = np.sum(u_minus_u)
+      u_plus_u_size = np.sum(u_plus_u)
+
+      if u_minus_u_size > 2 * max_u + 1:
+        # The constraint |U - U| <= 2 max (U) + 1 is not satisfied.
+        return 0
+
+      return np.log(u_minus_u_size / u_plus_u_size) / np.log(2 * max_u + 1) + 1.0 - 0.01 / u.size
+
+    You may code up any search method you want, and you are allowed to call the
+    compute_score() function as many times as you want. You have
+    access to it, you don't need to code up the compute_score()
+    function. You want the score it gives you to be as high as possible!
+
+    Your task is to write a search function that searches for the best set. Your
+    function will have 1000 seconds to run. You may choose n, the size of the set, to be as
+    large as you want. Larger values of n have more potential for bigger scores, but
+    the search space is larger so they are harder to find. You'll have to balance it
+    accordingly! To get the best possible score, you must consider large lists!
+
+  main_metric_name: "auxiliary_score"
+
+budget:
+  num_llm_calls: 100
+  num_coroutines: 4
+
+modules:
+  database: GreedyAndIslandsDatabase
+  prompt_sampler: TemplatePromptSampler
+  llm: GenAILLMClient
+  evaluator: DockerEvaluator
+  logger: LocalLogger

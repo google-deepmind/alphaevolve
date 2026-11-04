@@ -1,0 +1,64 @@
+name: "heilbronn_convex"
+
+problem_spec:
+  program_path: "../maths/heilbronn_convex/initial_program.py"
+  problem_description: |
+    Act as an expert software developer and geometer specializing in searching for 2-dimensional
+    point sets for which the ratio of smallest triangle area to convex hull area is as large as
+    possible. This is known as the Heilbronn problem for convex regions, and you are searching
+    for an optimal configuration of points.
+    The function you have to implement receives an argument `init_point_set` that
+    specifies the number of points. The output must have the same shape.
+    The function that will be used to evaluate your point set is as follows. You need not implement
+    it; you want to find an input that maximizes its output.
+
+    def smallest_area_triangle_normalized_by_convex_hull_area(point_set: np.ndarray) -> float:
+      """Finds the smallest area triangle normalized by convex hull area."""
+      # Reject invalid input types and shapes.
+      if not isinstance(point_set, np.ndarray) or not np.isfinite(point_set).all():
+        return 0
+
+      # Convert to float64 and clip values to avoid numerical instability.
+      point_set = np.asarray(point_set, np.float64).clip(0, 1)
+
+      # Generate all combinations of 3 indices.
+      idx = np.array(list(itertools.combinations(range(len(point_set)), 3)))
+
+      # Extract the points for each combination.
+      p1 = point_set[idx[:, 0]]
+      p2 = point_set[idx[:, 1]]
+      p3 = point_set[idx[:, 2]]
+
+      # Compute all triangle areas using the cross product formula.
+      # Area = 0.5 * |x1(y2-y3) + x2(y3-y1) + x3(y1-y2)|.
+      areas = 0.5 * np.abs(
+          p1[:, 0] * (p2[:, 1] - p3[:, 1])
+          + p2[:, 0] * (p3[:, 1] - p1[:, 1])
+          + p3[:, 0] * (p1[:, 1] - p2[:, 1])
+      )
+
+      convex_hull_area = scipy.spatial.ConvexHull(point_set).volume
+
+      # Reject degenerate point sets, which have a small convex hull area.
+      if convex_hull_area < 0.01:
+        return 0
+      return np.min(areas) / convex_hull_area
+
+    Your task is to write a search function that searches for the best point set. Your function
+    has 1000 seconds to run, and after that it has to return the best point set it has found.
+
+    You may code up any search method you want, and you can call the
+    `smallest_area_triangle_normalized_by_convex_hull_area` function as many times as you want.
+
+  main_metric_name: "score"
+
+budget:
+  num_llm_calls: 100
+  num_coroutines: 4
+
+modules:
+  database: GreedyAndIslandsDatabase
+  prompt_sampler: TemplatePromptSampler
+  llm: GenAILLMClient
+  evaluator: DockerEvaluator
+  logger: LocalLogger

@@ -1,0 +1,133 @@
+name: "pack_circles_square"
+
+problem_spec:
+  program_path: "../maths/circle_packing/initial_program.py"
+  problem_description: |
+    Act as an expert in optimization and geometry to solve the following question: put
+    num_circles many disjoint discs inside the unit square such that the sum of their radii is as
+    large as possible.
+
+    Your task is to produce a search function that finds the best placements of the centers of the
+    circles. You will be evaluated by a scoring function that takes your centers
+    and maximizes the sum of the radii of the circles by solving a linear program subject to the
+    linear constraints that the circles are disjoint and that they fit inside the unit square.
+    You need to produce a list of placements, which is a list of (x, y) coordinates of the centers
+    for each of the num_circles discs.
+
+    The scoring function is as follows (it's already implemented; you need not reimplement it):
+
+    def maximize_radii_sum(
+        centers: np.ndarray,
+        num_circles: int,
+    ) -> tuple[np.ndarray | None, tuple[float, float] | None]:
+      n = num_circles
+      if (
+          not isinstance(centers, np.ndarray)
+          or centers.shape != (n, 2)
+          or (not np.all(centers >= 0))
+          or (not np.all(np.isfinite(centers)))
+      ):
+        return None, None
+
+      centers = np.ascontiguousarray(centers, dtype=np.float64)
+      slack = 1e-7
+
+      # LP variables: x = [r0, ..., r_{n-1}, w, h]
+      c: np.ndarray = np.zeros(n + 2)
+      # LP objective: Maximize sum(r_i)
+      c[:n] = -1.0
+
+      # LP constraint matrices: a_ub * x <= b_ub and a_eq * x == b_eq.
+      a_ub: List[List[float]] = []
+      b_ub: List[float] = []
+      a_eq: List[List[float]] = []
+      b_eq: List[float] = []
+
+      # 1. Perimeter Constraint: w + h <= 2
+      row_p = [0.0] * (n + 2)
+      row_p[n], row_p[n + 1] = 1.0, 1.0
+      a_ub.append(row_p)
+      b_ub.append(2.0)
+
+      # 2. Squareness Constraint
+      # w = 1 (h == 1 will follow from constraint 1).
+      row_s = [0.0] * (n + 2)
+      row_s[n] = 1.0
+      a_eq.append(row_s)
+      b_eq.append(1.0)
+
+      for i in range(n):
+        xi, yi = centers[i]
+
+        # 3. Top and right boundary constraints
+        # r_i + x_i + slack <= w  =>  r_i - w <= -x_i - slack
+        row_w = [0.0] * (n + 2)
+        row_w[i] = 1.0
+        row_w[n] = -1.0
+        a_ub.append(row_w)
+        b_ub.append(-xi - slack)
+
+        # r_i + y_i + slack <= h  =>  r_i - h <= -y_i - slack
+        row_h = [0.0] * (n + 2)
+        row_h[i] = 1.0
+        row_h[n + 1] = -1.0
+        a_ub.append(row_h)
+        b_ub.append(-yi - slack)
+
+        # 4. Pairwise Non-overlapping: r_i + r_j <= dist - slack
+        for j in range(i + 1, n):
+          distance = float(np.linalg.norm(centers[i] - centers[j]))
+          row_d = [0.0] * (n + 2)
+          row_d[i] = 1.0
+          row_d[j] = 1.0
+          a_ub.append(row_d)
+          b_ub.append(distance - slack)
+
+      # 5. Bottom and left boundary constraints
+      # r_i <= x_i - slack and r_i <= y_i - slack
+      lp_bounds = [
+          (0.0, min(centers[i, 0], centers[i, 1]) - slack) for i in range(n)
+      ] + [(0.0, None), (0.0, None)]
+
+      # Solve the linear program.
+      options = {
+          'primal_feasibility_tolerance': 1e-12,
+          'dual_feasibility_tolerance': 1e-12,
+      }
+      result = scipy.optimize.linprog(
+          c,
+          A_ub=a_ub,
+          b_ub=b_ub,
+          A_eq=a_eq if a_eq else None,
+          b_eq=b_eq if b_eq else None,
+          bounds=lp_bounds,
+          method='highs-ds',
+          options=options,
+      )
+
+      if result.success:
+        return result.x[:n], (result.x[n], result.x[n + 1])
+      return None, None
+
+    You may code up any search method you want, and you are allowed to call the
+    maximize_radii_sum() function as many times as you want. You want the
+    score it gives you to be as high as possible! The final score is
+    np.sum(maximize_radii_sum(centers, num_circles)[0]).
+
+    Your task is to implement the search function `search_for_best_circle_packing`,
+    which takes as input init_centers, a list of (x, y) coordinates, which is the initial placement
+    of the centers of the discs and has the correct shape. You can start this off with the initial
+    placement of the centers of the discs, and you can do whatever you want with it. Your search
+    function has 1000 seconds to run.
+  main_metric_name: "sum_of_radii"
+
+budget:
+  num_llm_calls: 100
+  num_coroutines: 4
+
+modules:
+  database: GreedyAndIslandsDatabase
+  prompt_sampler: TemplatePromptSampler
+  llm: GenAILLMClient
+  evaluator: DockerEvaluator
+  logger: LocalLogger

@@ -1,0 +1,57 @@
+
+name: "erdos_minimum_overlap"
+
+problem_spec:
+  program_path: "../maths/erdos_minimum_overlap/initial_program.py"
+  problem_description: |
+    Act as an expert software developer and mathematician specializing in
+    creating step functions with certain properties. Your task is to generate the
+    sequence of heights of a step function that maximizes
+    the following evaluation function:
+
+    def sequence_score(sequence: np.ndarray, sequence_length: int) -> float:
+      if len(sequence.shape) != 1 or sequence.shape[0] != sequence_length:
+        return -np.inf
+      n = sequence.shape[0]
+      target_mirrored_sum = (2 * n - 1) / 2.0
+      for _ in range(100):
+        sequence[:n // 8] = 0.0
+        current_sum = 2 * np.sum(sequence) - sequence[-1]
+        if current_sum != 0:
+          sequence *= (target_mirrored_sum / current_sum)
+        else:
+          sequence += 0.1  # Nudge to avoid division by zero
+        sequence = np.clip(sequence, 0, 1)
+        actual_mirrored_sum = 2 * np.sum(sequence) - sequence[-1]
+        cond_zero = np.all(sequence[:n // 8] == 0)
+        cond_range = np.all((sequence >= 0) & (sequence <= 1))
+        cond_sum = np.isclose(actual_mirrored_sum, target_mirrored_sum, atol=1e-12)
+        if cond_zero and cond_range and cond_sum:
+          break
+      mirrored_sequence = np.concatenate((sequence[:-1], sequence[::-1]))
+      convolution_values = np.correlate(
+          np.array(mirrored_sequence), 1 - np.array(mirrored_sequence), mode='full'
+      )
+      return -np.max(convolution_values) / len(mirrored_sequence) * 2
+
+    Your task is to write a search function that searches for the best sequence of
+    coefficients. Your function will have 1000 seconds to run, and after that it has
+    to return the best sequence it found. You can start your search from the initial
+    argument `init_sequence` which has the correct size.
+
+    You may code up any search method you want, and you are allowed to call the
+    sequence_score() function as many times as you want. You don't need to code up
+    this function.
+
+  main_metric_name: "score"
+
+budget:
+  num_llm_calls: 100
+  num_coroutines: 4
+
+modules:
+  database: GreedyAndIslandsDatabase
+  prompt_sampler: TemplatePromptSampler
+  llm: GenAILLMClient
+  evaluator: DockerEvaluator
+  logger: LocalLogger

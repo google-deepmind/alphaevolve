@@ -1,0 +1,18 @@
+
+name: "circle_packing"
+
+problem_spec:
+  program_path: "data/initial_programs/circle_packing.py"
+  problem_description: "You are an expert mathematician specializing in circle packing problems and computational geometry. Your task is to improve a constructor function that directly produces a specific arrangement of 28 circles in a unit square, maximizing the sum of their radii."
+  main_metric_name: "sum_of_radii"
+
+budget:
+  num_llm_calls: 100
+  num_coroutines: 4
+
+modules:
+  database: GreedyAndIslandsDatabase
+  prompt_sampler: TemplatePromptSampler
+  llm: GenAILLMClient
+  evaluator: DockerEvaluator
+  logger: LocalLogger

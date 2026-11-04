@@ -1,0 +1,51 @@
+
+name: "max_min_ratio"
+
+problem_spec:
+  program_path: "../maths/max_min_ratio/initial_program.py"
+  problem_description: |
+    Act as an expert software developer and geometer specializing in searching for
+    point sets for which the ratio of maximum distance to minimum distance is as small as possible.
+    The function you have to implement receives an argument `init_point_set` that specifies the
+    number of points and the dimension. The output must have the same shape.
+    The function that will be used to evaluate your point set is as follows. You need not implement
+    it; you want to find an input that maximizes its output.
+
+    def compute_negative_squared_max_min_ratio(point_set: np.ndarray) -> float:
+      """Returns negative squared ratio of max distance over min distance."""
+      # Reject invalid input types.
+      if (
+          not isinstance(point_set, np.ndarray)
+          or not np.isfinite(point_set).all()
+      ):
+        return -np.inf
+      # Convert to float64 and clip values to avoid numerical instability.
+      point_set = np.asarray(point_set, np.float64).clip(-1000, 1000)
+      # Calculate squared Euclidean distances.
+      squared_distances = scipy.spatial.distance.pdist(
+          point_set, metric='sqeuclidean'
+      )
+      # Reject very small minimum distance, as it can cause numerical instability.
+      min_squared_distance = np.min(squared_distances)
+      if min_squared_distance < np.finfo(np.float64).eps:
+        return -np.inf
+      return -np.max(squared_distances) / min_squared_distance
+
+    Your task is to write a search function that searches for the best point set. Your function
+    has 1000 seconds to run, and after that it has to return the best point set it has found.
+
+    You may code up any search method you want, and you can call the
+    `compute_negative_squared_max_min_ratio` function as many times as you want.
+
+  main_metric_name: "score"
+
+budget:
+  num_llm_calls: 100
+  num_coroutines: 4
+
+modules:
+  database: GreedyAndIslandsDatabase
+  prompt_sampler: TemplatePromptSampler
+  llm: GenAILLMClient
+  evaluator: DockerEvaluator
+  logger: LocalLogger

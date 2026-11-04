@@ -1,0 +1,79 @@
+
+name: "hexagon_packing"
+
+problem_spec:
+  program_path: "../maths/hexagon_packing/initial_program_11.py"
+  problem_description: |
+    Act as an expert in optimization and geometry, to solve the following question:
+    what is the smallest area of an outer unit regular hexagon that can fit a specified number of
+    non-overlapping unit regular hexagons? The inner hexagons can be translated and rotated in any
+    way, but they cannot overlap, and they must be contained in the outer hexagon.
+
+    Your task is to write a search function that searches for the best placements of the inner
+    hexagons. The scaling factor of the outer hexagon that contains all of the inner
+    hexagons will be calculated automatically, and that will be the negative of your score. Thus,
+    the higher your score, the better your packing!
+    More precisely, you will have to produce a list of placements, which is a list of triples of the
+    form (x, y, angle) for each inner polygon *and* one triple for the outer polygon (placed last in
+    the list). In the code below, `TransformedHexagon` is a type alias for a tuple of three floats
+    (x, y, angle). You will be evaluated with the following function:
+
+
+    def calculate_packing_score_polygons(
+        placements: list[TransformedHexagon],
+    ) -> float:
+      """Validates geometry and returns -scale (higher score is tighter packing)."""
+      # Validation
+      if not isinstance(placements, list):
+        return -float('inf')
+
+      # Check bounds and data types
+      clamped: list[TransformedHexagon] = []
+      for p in placements:
+        if not all(math.isfinite(v) for v in p):
+          return -float('inf')
+        clamped.append((
+            float(np.clip(p[0], -1000, 1000)),
+            float(np.clip(p[1], -1000, 1000)),
+            float(p[2]),
+        ))
+
+      placed_polys: list[Polygon] = []
+      for x, y, ang in clamped[:-1]:
+        current = transformed_unit_hexagon(x, y, ang)
+        if placed_polys:
+          # Overlap check
+          if current.intersects(shapely.ops.unary_union(placed_polys)):
+            return -float('inf')
+        placed_polys.append(current)
+
+      return -find_smallest_scale_outer_polygon(clamped)
+
+    You may code up any search method you want, and you are allowed to call the
+    calculate_packing_score_polygons() function as many times as you want. You have
+    access to it; you don't need to code up the calculate_packing_score_polygons()
+    function. You want the score it gives you to be as high (as least negative) as possible.
+    This corresponds to minimizing the scaling factor of the outer polygon that contains all the
+    inner hexagons.
+
+    Your task is to improve the search function `search_for_best_packings` that searches for best
+    list of placements. Your function will have 1000 seconds to run. The search function takes an
+    argument `initial_solution`, which is a good starting point for the search. The output of the
+    function should have the same format as the input argument. The first few triples represent the
+    (x, y, angle) placements of the inner hexagons, and the last triple represents the (x, y, angle)
+    placement of the outer polygon. (The smallest scaling of the outer polygon is determined
+    automatically inside the `calculate_packing_score_polygons` function using a binary search, and
+    you need not provide the scale.)
+
+  main_metric_name: "score"
+
+budget:
+  num_llm_calls: 100
+  num_coroutines: 4
+
+modules:
+  database: GreedyAndIslandsDatabase
+  prompt_sampler: TemplatePromptSampler
+  llm: GenAILLMClient
+  evaluator: DockerEvaluator
+  logger: LocalLogger

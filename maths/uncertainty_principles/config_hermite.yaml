@@ -1,0 +1,149 @@
+name: "uncertainty_principle_hermite"
+
+problem_spec:
+  program_path: "../maths/uncertainty_principles/initial_program_hermite.py"
+  problem_description: |
+    Act as an expert mathematician, software developer and optimization expert specializing in
+    creating a linear combination of Hermitian polynomials of degrees 0, 4, 8, ..., 4n + 4.
+    For a given natural number n, your task is to find a one-dimensional python list consisting of n
+    real coefficients c_i (not all of them equal to 0) with the following extremal property. We
+    construct the linear combination of Hermitian polynomials:
+
+    $g(x) := a H_(4n + 4)(x) + \sum_i c_i H_(4i)(x)$
+    for i = 1, \dots, n, where the number a is chosen such that $g(0) = 0$.
+    If the g(x) converges to negative infinity, we multiply the linear combination g(x) by -1 to
+    ensure that the polynomial g(x) is positive at infinity. Let $r$ be the largest positive sign
+    change of the polynomial g(x).
+
+    GOAL:
+    Your optimization task is, for a given natural number n, to propose the list of coefficients c_i
+    such that the polynomial g(x) has the largest possible value of r. The score of the list of
+    coefficients c_i is r^2. The coefficients of this linear combination are chosen
+    such that the polynomial g(x) has the largest possible value of r. Specifically, the Python
+    function you have to provide has the following signature:
+
+    def search_for_best_coefficients(init_coeffs: list[float]) -> list[float]:
+
+    The argument init_coeffs is a list of 3 floats, which you can start the search from. The output
+    must have 3 elements. The score function your construction will be evaluated on is given below:
+
+    def compute_hermite_combination(coeffs: list[float]) -> sympy.Expr:
+      """Constructs a linear combination of Hermite polynomials given coefficients.
+
+      The resulting polynomial:
+      1. Uses degrees 0, 4, 8, ..., 4m.
+      2. Has a root at x=0 by calculating a specific final coefficient.
+      3. Is normalized to be positive as x approaches infinity.
+
+      Args:
+        coeffs: A list of real coefficients c_i.
+
+      Returns:
+        A sympy expression for the linear combination of the Hermite polynomials.
+      """
+      m = len(coeffs)
+      x = sympy.symbols('x')
+
+      # Map degrees to 0, 4, 8, 12, etc.
+      degrees = np.arange(0, 4 * m + 4, 4)
+      rational_coeffs = [sympy.Rational(c) for c in coeffs]
+
+      # Generate Hermite polynomials H_0, H_4, H_8, etc.
+      hermite_polys = [
+          sympy.polys.orthopolys.hermite_poly(n=d, x=x, polys=False)
+          for d in degrees
+      ]
+
+      # Sum initial terms: partial_result = c0*H0 + c4*H4 + etc.
+      partial_result = sympy.Add(
+          *(c * h for c, h in zip(rational_coeffs, hermite_polys))
+      )
+
+      # Solve for the final coefficient so that final_result(0) = 0.
+      # Equation: partial_result(0) + last_coeff * last_hermite(0) = 0.
+      h_last_at_zero = hermite_polys[-1].subs(x, 0)
+      partial_at_zero = partial_result.subs(x, 0)
+
+      last_coeff = sympy.Rational(-partial_at_zero / h_last_at_zero)
+      rational_coeffs.append(last_coeff)
+
+      # Reconstruct the full polynomial.
+      final_poly = sum(c * h for c, h in zip(rational_coeffs, hermite_polys))
+
+      # Ensure leading behavior is positive (positive at infinity).
+      if sympy.limit(final_poly, x, sympy.oo) < 0:
+        final_poly = -final_poly
+
+      return final_poly
+
+    def get_score(coeffs: list[float]) -> float:
+      """Evaluates score of a coefficient set based on roots of the Hermite poly.
+
+      The score identifies the largest real x-value where the polynomial crosses
+      the x-axis (sign change). The score is returned as -x^2 / 2π.
+
+      Args:
+        coeffs: A list of real coefficients c_i. Must contain 3 floats. The maximum
+          absolute value of coefficients must be between 1e-14 and 1000.
+
+      Returns:
+        The final score of the coefficients.
+      """
+      if (
+          not isinstance(coeffs, list)
+          or len(coeffs) != 3
+          or not all(isinstance(x, (int, float, np.floating)) for x in coeffs)
+          or max([abs(x) for x in coeffs]) > 1000
+          or max([abs(x) for x in coeffs]) < 1e-14
+      ):
+        return float('-inf')
+
+      x = sympy.symbols('x')
+      poly_expr = compute_hermite_combination(coeffs)
+
+      # Divide by x^2 to remove the known trivial root at the origin.
+      reduced_poly = sympy.exquo(poly_expr, x**2)
+
+      # Find all real roots of the remaining polynomial.
+      real_roots = sympy.real_roots(reduced_poly, x)
+
+      largest_crossing_root = 0
+
+      for root in real_roots:
+        # High-precision rational approximation.
+        approx_root = root.eval_rational(n=200)
+
+        # Check for sign change around the root (verifies it's not just a tangent).
+        val_plus = reduced_poly.subs(x, approx_root + sympy.Rational(1, 10**198))
+        val_minus = reduced_poly.subs(x, approx_root - sympy.Rational(1, 10**198))
+
+        crosses_axis = (val_plus * val_minus) < 0
+
+        if crosses_axis:
+          largest_crossing_root = max(largest_crossing_root, approx_root)
+
+      # Return the normalized score.
+      return -float(largest_crossing_root**2) / (2 * np.pi)
+
+    Note that the score function uses `compute_hermite_combination` method to obtain the
+    polynomial g(x) given coeffs via exact fractional arithmetic in sympy.
+    You may code up any search method you want, and you are allowed to call the get_score()
+    function as many times as you want. You have access to it, you don't need to code up the
+    get_score() function. You want the score it gives you to be as high as possible!
+    Your task is to write a search function that searches for the best list.
+
+    Your function will have 1000 seconds to run, and after that it has to return the best
+    construction it has found.
+
+  main_metric_name: "score"
+
+budget:
+  num_llm_calls: 100
+  num_coroutines: 4
+
+modules:
+  database: GreedyAndIslandsDatabase
+  prompt_sampler: TemplatePromptSampler
+  llm: GenAILLMClient
+  evaluator: DockerEvaluator
+  logger: LocalLogger

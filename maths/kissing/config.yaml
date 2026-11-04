@@ -1,0 +1,52 @@
+name: "kissing_numbers"
+
+problem_spec:
+  program_path: "../maths/kissing/initial_program.py"
+  problem_description: |
+    Act as an expert in optimization and geometry, to solve the following question:
+    given the numbers `num_spheres` and `dimension`, how can we pick `num_spheres` many
+    points, each having `dimension` many coordinates, in such a way that each of the
+    points is at distance exactly 1 from the origin, and at least distance 1 from
+    every other point?
+
+    Your task is to produce a search function that searches for the best placements
+    of the points. You have to return a numpy array with shape (`num_spheres`, `dimension`),
+    and your solution will be evaluated by the function `check_and_calculate_packing_score`
+    defined below. This function is already defined; you don't need to rewrite it:
+
+    def check_and_calculate_packing_score(centers: np.ndarray, n: int, d: int) -> float:
+      centers = centers.astype(np.float64)
+      norms = np.linalg.norm(centers, axis=1)
+      epsilon = np.finfo(np.float64).eps
+      if np.min(norms) < epsilon or np.max(norms) * epsilon > 1:
+        return -n * n
+      centers /= norms[:, np.newaxis]
+      if np.isnan(centers).any() or np.isinf(centers).any():
+        return -n * n
+      expanded_a = np.expand_dims(centers, axis=1)
+      expanded_b = np.expand_dims(centers, axis=0)
+      distances = np.linalg.norm(expanded_a - expanded_b, axis=2)
+      penalties = np.maximum(0.0, 1.0 - distances)
+      return -np.sum(penalties[np.triu_indices(n, k=1)])
+
+    You may code up any search method you want, and you are allowed to call the
+    `check_and_calculate_packing_score()` function as many times as you want.
+    You want the score it gives you to be as high (as least negative) as
+    possible!
+
+    Your task is to write a search function that searches for the best list of placements. Your
+    function has at most 1000 seconds to run, and after that, it has to return the best construction
+    it found.
+
+  main_metric_name: "packing_score"
+
+budget:
+  num_llm_calls: 100
+  num_coroutines: 4
+
+modules:
+  database: GreedyAndIslandsDatabase
+  prompt_sampler: TemplatePromptSampler
+  llm: GenAILLMClient
+  evaluator: DockerEvaluator
+  logger: LocalLogger

@@ -1,0 +1,69 @@
+
+name: "heilbronn_triangle"
+
+problem_spec:
+  program_path: "../maths/heilbronn_triangle/initial_program.py"
+  problem_description: |
+    Act as an expert in optimization and geometry, to solve the following question:
+    Given n points within a equilateral triangle, what is the largest possible area of the smallest
+    triangle formed by any three of these points? This is known as the Heilbronn triangle problem.
+
+    Your task is to produce a search function that finds the best placements of n points inside the
+    eqilateral triangle to maximize this smallest triangle area. You will be evaluated by a scoring
+    function that calculates the area of the smallest triangle for a given set of point placements.
+
+    If the outer triangle has vertices A, B, and C, then any point P inside the triangle can be
+    represented by barycentric coordinates (u, v, w), where u, v, and w are non-negative and sum
+    to 1. If A = (0, 0), B = (1, 0), and C = (0.5, sqrt(3)/2), then the Cartesian coordinates of P
+    are given by u * A + v * B + w * C.
+
+    You need to produce a list of coordinates, which is a list of (u, v) coordinates for each of the
+    n points. Your score is the smallest triangle area itself, and you want to maximize it.
+    The scoring function is as follows (it is already implemented):
+
+    def min_area_triangle_ratio(coordinates: np.ndarray) -> float:
+      if (
+          not isinstance(coordinates, np.ndarray)
+          or np.isnan(coordinates).any()
+          or np.isinf(coordinates).any()
+      ):
+        # invalid input
+        return 0
+      coordinates = np.asarray(coordinates, np.float64)
+
+      # 1. Check that all points are inside or on the triangle.
+      # u >= 0, v >= 0, and (1 - u - v) >= 0
+      u = coordinates[:, 0]
+      v = coordinates[:, 1]
+      w = 1.0 - u - v
+      if np.any(u < 0) or np.any(v < 0) or np.any(w < 0):
+        return 0
+
+      # 2. Compute the minimum area ratio.
+      return min(
+          abs(np.linalg.det([p1 - p3, p2 - p3]))
+          for p1, p2, p3 in itertools.combinations(coordinates, 3)
+      )
+
+    You may code up any search method you want, and you are allowed to call the
+    min_area_triangle_ratio function as many times as you want. You want the score it gives you to
+    be as high as possible! This corresponds to maximizing the smallest triangle area.
+
+    Your task is to write a search function that searches for the best list of coordinates. The
+    function receives the initial point set as input, which it can use as a starting point for its
+    search and indicates the number of points to place. The function should return a list of
+    coordinates representing the best point set found, with the same shape as the input point set.
+    The search function has 1000 seconds to run.
+
+  main_metric_name: "score"
+
+budget:
+  num_llm_calls: 100
+  num_coroutines: 4
+
+modules:
+  database: GreedyAndIslandsDatabase
+  prompt_sampler: TemplatePromptSampler
+  llm: GenAILLMClient
+  evaluator: DockerEvaluator
+  logger: LocalLogger

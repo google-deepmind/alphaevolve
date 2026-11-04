@@ -1,0 +1,52 @@
+name: "second_autocorrelation_inequality"
+
+problem_spec:
+  program_path: "../maths/second_autocorrelation_inequality/initial_program.py"
+  problem_description: |
+    Act as an expert software developer and mathematician specializing in
+    searching for step functions with certain properties.
+
+    Your task is to find a sequence of non-negative heights of a step function that
+    maximizes the following score function (this is already implemented elsewhere
+    in the code, you need not reimplement this):
+
+    def sequence_score(sequence: np.ndarray) -> float:
+      if len(sequence) < 50000:
+        return -np.inf
+      conv = np.convolve(sequence, sequence)
+      h = 1.0 / (len(conv) + 1)  # Width of each interval.
+      y = np.pad(conv, (1, 1), mode='constant')
+      y1 = y[:-1]
+      y2 = y[1:]
+      l2_norm_squared = (h / 3) * np.sum(y1**2 + y1 * y2 + y2**2)
+      norm_1 = np.sum(np.abs(conv)) * h
+      norm_inf = np.max(np.abs(conv))
+      if norm_inf * norm_1 < 0.01:
+        return -np.inf
+      return l2_norm_squared / (norm_1 * norm_inf)
+
+    Your task is to write a search function that searches for the best sequence.
+    Your search function has a time limit of 1000 seconds.
+
+    You may code up any search method you want, and you are allowed to call the
+    sequence_score() function as many times as you want.
+
+    You may want to start your search from the best construction found so
+    far, which you can access through the `init_sequence` argument.
+
+    To beat the best known construction, you must consider sequences with
+    at least 50000 entries! With shorter lists you might have a temporary advantage,
+    but in the long term you will never succeed in getting good results.
+
+  main_metric_name: "score"
+
+budget:
+  num_llm_calls: 100
+  num_coroutines: 4
+
+modules:
+  database: GreedyAndIslandsDatabase
+  prompt_sampler: TemplatePromptSampler
+  llm: GenAILLMClient
+  evaluator: DockerEvaluator
+  logger: LocalLogger
