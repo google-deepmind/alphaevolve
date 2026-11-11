@@ -1,8 +1,8 @@
 # AlphaEvolve
 
-This repository accompanies the paper
+This repository accompanies the paper:
 
-TODO(franrruiz): Add link to paper.
+[*AlphaEvolve: A coding agent for scientific and algorithmic discovery*](https://arxiv.org/abs/2506.13131).
 
 There are the following directories:
 
@@ -159,7 +159,15 @@ other liability arising from the execution of LLM-generated code.
 If you use the code or data in this package, please cite:
 
 ```
-TODO(franrruiz): Add citation.
+@misc{novikov2025alphaevolve,
+      title={{AlphaEvolve}: A coding agent for scientific and algorithmic discovery},
+      author={Alexander Novikov and Ng{\^a}n V{\~u} and Marvin Eisenberger and Emilien Dupont and Po-Sen Huang and Adam Zsolt Wagner and Sergey Shirobokov and Borislav Kozlovskii and Francisco J. R. Ruiz and Abbas Mehrabian and M. Pawan Kumar and Abigail See and Swarat Chaudhuri and George Holland and Alex Davies and Sebastian Nowozin and Pushmeet Kohli and Matej Balog},
+      year={2025},
+      eprint={2506.13131},
+      archivePrefix={arXiv},
+      primaryClass={cs.AI},
+      url={https://arxiv.org/abs/2506.13131},
+}
 ```
 
 ## License and disclaimer
