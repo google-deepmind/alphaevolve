@@ -22,6 +22,7 @@ import hashlib
 import io
 import json
 import os
+import secrets
 import tarfile
 import tempfile
 import textwrap
@@ -69,8 +70,6 @@ class BaseEvaluator(abc.ABC):
 
 class DockerEvaluator(BaseEvaluator):
   """Evaluates code securely in an ephemeral Docker container."""
-
-  _RESULT_SEPARATOR = '~~~~~~~RESULT_SEPARATOR~~~~~~~'
 
   def __init__(
       self,
@@ -159,7 +158,10 @@ class DockerEvaluator(BaseEvaluator):
   @override
   def _run(self, code: str, parent_output: Any | None = None) -> Any:
     """Runs code in a sandboxed Docker container."""
-    script_content = self._build_script(code, parent_output)
+    # Fresh random separator per evaluation: the evaluated code must not
+    # be able to predict the token it would need to print to forge a result.
+    result_separator = secrets.token_hex(16)
+    script_content = self._build_script(code, parent_output, result_separator)
     client = docker.from_env()
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -230,12 +232,14 @@ class DockerEvaluator(BaseEvaluator):
               f'Container exited with code {result["StatusCode"]}: {full_log}'
           )
 
-        return self._parse_result(full_log)
+        return self._parse_result(full_log, result_separator)
       finally:
         if container:
           container.remove(force=True)
 
-  def _build_script(self, code: str, parent_output: Any | None) -> str:
+  def _build_script(
+      self, code: str, parent_output: Any | None, result_separator: str
+  ) -> str:
     """Builds the script to execute inside the container."""
 
     try:
@@ -262,14 +266,21 @@ class DockerEvaluator(BaseEvaluator):
         print(json.dumps(result))
     """).format(
         code=code,
-        result_separator=self._RESULT_SEPARATOR,
+        result_separator=result_separator,
         parent_output_json=repr(parent_output_json),
     )
 
-  def _parse_result(self, output: str) -> Any:
-    """Parses the result from container stdout."""
-    if self._RESULT_SEPARATOR not in output:
+  def _parse_result(self, output: str, result_separator: str) -> Any:
+    """Parses the result from container stdout.
+
+    Takes the text after the FIRST occurrence of this run's separator: the
+    harness prints the separator exactly once, immediately before the
+    genuine result. Any further occurrence (e.g. printed by evaluated code
+    after the real result) leaves trailing text that json.loads rejects,
+    so the run fails closed instead of accepting a forged score.
+    """
+    if result_separator not in output:
       raise RuntimeError(f'Result separator not found in output: {output}')
 
-    result_json = output.split(self._RESULT_SEPARATOR)[-1].strip()
+    result_json = output.split(result_separator, 1)[1].strip()
     return json.loads(result_json)
